@@ -18,6 +18,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $gradleFile = Join-Path $projectRoot "app\build.gradle.kts"
 $apkPath = Join-Path $projectRoot "app\build\outputs\apk\debug\app-debug.apk"
+$releaseDir = Join-Path $projectRoot "release"
 $tagName = "v$VersionName"
 
 function Get-GitHubHeaders {
@@ -54,6 +55,14 @@ function Read-VersionInfo {
         VersionName = $versionNameMatch.Groups[1].Value
         VersionCode = [int]$versionCodeMatch.Groups[1].Value
     }
+}
+
+function Get-ArtifactName {
+    param(
+        [string]$Version
+    )
+
+    return "Pstankidroid-v$Version.apk"
 }
 
 Push-Location $projectRoot
@@ -102,6 +111,12 @@ try {
         Write-Output "APK=$apkPath"
     }
 
+    $artifactName = Get-ArtifactName -Version $VersionName
+    New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+    $releaseAsset = Join-Path $releaseDir $artifactName
+    Copy-Item -Force $apkPath $releaseAsset
+    Write-Output "ReleaseAsset=$releaseAsset"
+
     $existingTag = (& git tag --list $tagName)
     if ($existingTag) {
         throw "Tag already exists: $tagName"
@@ -125,7 +140,7 @@ try {
     Write-Output "Tag=$tagName"
 
     if ($CreateRelease) {
-        $assetPath = if ($ReleaseAssetPath) { $ReleaseAssetPath } else { $apkPath }
+        $assetPath = if ($ReleaseAssetPath) { $ReleaseAssetPath } else { $releaseAsset }
         if (-not (Test-Path $assetPath)) {
             throw "Release asset not found: $assetPath"
         }
