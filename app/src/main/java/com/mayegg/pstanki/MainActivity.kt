@@ -673,6 +673,7 @@ private fun LogDialog(
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val requestGroups = remember(logs) { buildLogGroups(logs) }
     var selectedGroup by remember(logs) { mutableStateOf<LogRequestGroup?>(null) }
+    val currentGroup = selectedGroup
     val closeCurrentLayer = {
         if (selectedGroup == null) {
             onDismiss()
@@ -687,7 +688,7 @@ private fun LogDialog(
         onDismissRequest = closeCurrentLayer,
         properties =
             DialogProperties(
-                dismissOnBackPress = true,
+                dismissOnBackPress = false,
                 dismissOnClickOutside = true,
                 usePlatformDefaultWidth = false,
             ),
@@ -704,7 +705,7 @@ private fun LogDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(
-                    text = if (selectedGroup == null) "LLM 日志" else "请求详情",
+                    text = if (currentGroup == null) "LLM 日志" else "请求详情",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -715,9 +716,9 @@ private fun LogDialog(
                             .height(420.dp),
                 ) {
                     when {
-                        selectedGroup != null -> {
+                        currentGroup != null -> {
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(selectedGroup!!.entries, key = { "${it.timestamp}-${it.level}-${it.message.hashCode()}" }) { entry ->
+                                items(currentGroup.entries, key = { "${it.timestamp}-${it.level}-${it.message.hashCode()}" }) { entry ->
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -779,7 +780,7 @@ private fun LogDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    if (selectedGroup == null) {
+                    if (currentGroup == null) {
                         TextButton(onClick = onClear, enabled = logs.isNotEmpty()) {
                             Text("清空")
                         }
