@@ -5,7 +5,10 @@ param(
     [string]$BuildTask = "assembleDebug",
     [switch]$SkipBuild,
     [switch]$SkipPush,
-    [string]$Branch = "main"
+    [string]$Branch = "main",
+    [switch]$CreateRelease,
+    [string]$Repo = "Mayeggx/Pstankiroid",
+    [string]$ReleaseAssetPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +19,26 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 $gradleFile = Join-Path $projectRoot "app\build.gradle.kts"
 $apkPath = Join-Path $projectRoot "app\build\outputs\apk\debug\app-debug.apk"
 $tagName = "v$VersionName"
+
+function Get-GitHubHeaders {
+    $cred = @"
+protocol=https
+host=github.com
+
+"@ | git credential fill
+
+    $tokenLine = $cred | Select-String '^password=' | Select-Object -First 1
+    if (-not $tokenLine) {
+        throw "Failed to resolve GitHub token from git credential helper."
+    }
+
+    $token = $tokenLine.ToString().Split('=', 2)[1]
+    return @{
+        Authorization = "Bearer $token"
+        Accept = "application/vnd.github+json"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+}
 
 function Read-VersionInfo {
     param([string]$Content)
@@ -100,8 +123,49 @@ try {
 
     Write-Output "Release prep complete."
     Write-Output "Tag=$tagName"
-    Write-Output "Next: create a GitHub Release based on $tagName and upload only the APK as a manual asset if needed."
-    Write-Output "Note: GitHub will still auto-generate source archives (zip/tar.gz); those cannot be removed."
+
+    if ($CreateRelease) {
+        $assetPath = if ($ReleaseAssetPath) { $ReleaseAssetPath } else { $apkPath }
+        if (-not (Test-Path $assetPath)) {
+            throw "Release asset not found: $assetPath"
+        }
+
+        $headers = Get-GitHubHeaders
+        $releaseBody =
+            @{
+                tag_name = $tagName
+                target_commitish = $Branch
+                name = $tagName
+                body = "Pstankidroid $VersionName`n`nAssets:`n- $(Split-Path $assetPath -Leaf)"
+                draft = $false
+                prerelease = $false
+            } | ConvertTo-Json
+
+        $release =
+            Invoke-RestMethod `
+                -Method Post `
+                -Headers $headers `
+                -Uri "https://api.github.com/repos/$Repo/releases" `
+                -Body $releaseBody `
+                -ContentType "application/json"
+
+        $uploadUrl = ($release.upload_url -replace '\{\?name,label\}', '') + "?name=$([System.Uri]::EscapeDataString((Split-Path $assetPath -Leaf)))"
+        Invoke-RestMethod `
+            -Method Post `
+            -Headers @{
+                Authorization = $headers.Authorization
+                Accept = $headers.Accept
+                "Content-Type" = "application/vnd.android.package-archive"
+            } `
+            -Uri $uploadUrl `
+            -InFile $assetPath | Out-Null
+
+        Write-Output "ReleaseUrl=$($release.html_url)"
+        Write-Output "UploadedAsset=$(Split-Path $assetPath -Leaf)"
+    } else {
+        Write-Output "Next: create a GitHub Release based on $tagName and upload only the APK as a manual asset if needed."
+        Write-Output "Note: GitHub will still auto-generate source archives (zip/tar.gz); those cannot be removed."
+    }
 } finally {
     Pop-Location
 }
