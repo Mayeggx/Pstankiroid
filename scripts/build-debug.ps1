@@ -9,6 +9,10 @@ Push-Location $projectRoot
 try {
     Write-Output "Starting debug build..."
     & .\gradlew.bat clean assembleDebug --console=plain --stacktrace --no-daemon
+    $gradleExitCode = $LASTEXITCODE
+    if ($gradleExitCode -ne 0) {
+        throw "Gradle build failed with exit code: $gradleExitCode"
+    }
 
     if (-not (Test-Path $apkPath)) {
         throw "Build finished but APK was not found: $apkPath"
@@ -19,6 +23,9 @@ try {
     Write-Output "APK=$($apk.FullName)"
     Write-Output "Size=$($apk.Length)"
     Write-Output "LastWriteTime=$($apk.LastWriteTime)"
+} catch {
+    Write-Error $_
+    exit 1
 } finally {
     Pop-Location
 }
