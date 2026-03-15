@@ -25,6 +25,11 @@ $releaseDir = Join-Path $projectRoot "release"
 $tagName = "v$VersionName"
 $autoStashName = "release.ps1-auto-stash-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
 $didAutoStash = $false
+$tagAlreadyExists = $false
+
+function Get-TrackedStatus {
+    return @(& git status --porcelain | Where-Object { $_ -and -not $_.StartsWith("?? ") })
+}
 
 function Get-GitHubHeaders {
     $cred = @"
@@ -88,17 +93,17 @@ Assets:
 
 Push-Location $projectRoot
 try {
-    $statusBefore = (& git status --short)
-    if ($statusBefore) {
-        Write-Output "Detected local changes. Auto stashing before release..."
-        & git stash push -u -m $autoStashName | Out-Null
+    $statusBefore = Get-TrackedStatus
+    if ($statusBefore.Count -gt 0) {
+        Write-Output "Detected tracked local changes. Auto stashing before release..."
+        & git stash push -m $autoStashName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "git stash push failed." }
         $didAutoStash = $true
         Write-Output "AutoStash=$autoStashName"
     }
 
-    $statusAfterStash = (& git status --short)
-    if ($statusAfterStash) {
+    $statusAfterStash = Get-TrackedStatus
+    if ($statusAfterStash.Count -gt 0) {
         throw "Git worktree is not clean after auto stash. Resolve manually and rerun."
     }
 
@@ -111,8 +116,18 @@ try {
     $content = Get-Content $gradleFile -Raw
     $current = Read-VersionInfo -Content $content
 
+    $existingTag = (& git tag --list $tagName)
+    $tagAlreadyExists = -not [string]::IsNullOrWhiteSpace(($existingTag | Select-Object -First 1))
+    if ($tagAlreadyExists) {
+        Write-Output "Tag already exists: $tagName (republish mode)"
+    }
+
     if (-not $PSBoundParameters.ContainsKey("VersionCode")) {
-        $VersionCode = $current.VersionCode + 1
+        if ($tagAlreadyExists -and $current.VersionName -eq $VersionName) {
+            $VersionCode = $current.VersionCode
+        } else {
+            $VersionCode = $current.VersionCode + 1
+        }
     }
 
     $updated = $content
@@ -147,23 +162,22 @@ try {
     Copy-Item -Force $apkPath $releaseAsset
     Write-Output "ReleaseAsset=$releaseAsset"
 
-    $existingTag = (& git tag --list $tagName)
-    if ($existingTag) {
-        throw "Tag already exists: $tagName"
-    }
+    if (-not $tagAlreadyExists) {
+        & git add $gradleFile
+        if ($LASTEXITCODE -ne 0) { throw "git add failed." }
+        & git commit -m "Release $tagName"
+        if ($LASTEXITCODE -ne 0) { throw "git commit failed." }
+        & git tag -a $tagName -m "Release $tagName"
+        if ($LASTEXITCODE -ne 0) { throw "git tag failed." }
 
-    & git add $gradleFile
-    if ($LASTEXITCODE -ne 0) { throw "git add failed." }
-    & git commit -m "Release $tagName"
-    if ($LASTEXITCODE -ne 0) { throw "git commit failed." }
-    & git tag -a $tagName -m "Release $tagName"
-    if ($LASTEXITCODE -ne 0) { throw "git tag failed." }
-
-    if (-not $SkipPush) {
-        & git push origin $Branch
-        if ($LASTEXITCODE -ne 0) { throw "git push branch failed." }
-        & git push origin $tagName
-        if ($LASTEXITCODE -ne 0) { throw "git push tag failed." }
+        if (-not $SkipPush) {
+            & git push origin $Branch
+            if ($LASTEXITCODE -ne 0) { throw "git push branch failed." }
+            & git push origin $tagName
+            if ($LASTEXITCODE -ne 0) { throw "git push tag failed." }
+        }
+    } else {
+        Write-Output "Skip commit/tag because $tagName already exists."
     }
 
     Write-Output "Release prep complete."
@@ -195,15 +209,36 @@ try {
                 prerelease = $false
             } | ConvertTo-Json
 
-        $release =
-            Invoke-RestMethod `
-                -Method Post `
-                -Headers $headers `
-                -Uri "https://api.github.com/repos/$Repo/releases" `
-                -Body $releaseBody `
-                -ContentType "application/json"
+        $release = $null
+        try {
+            $release =
+                Invoke-RestMethod `
+                    -Method Get `
+                    -Headers $headers `
+                    -Uri "https://api.github.com/repos/$Repo/releases/tags/$tagName"
+            Write-Output "Use existing GitHub release for $tagName"
+        } catch {
+            $release =
+                Invoke-RestMethod `
+                    -Method Post `
+                    -Headers $headers `
+                    -Uri "https://api.github.com/repos/$Repo/releases" `
+                    -Body $releaseBody `
+                    -ContentType "application/json"
+            Write-Output "Created new GitHub release for $tagName"
+        }
 
-        $uploadUrl = ($release.upload_url -replace '\{\?name,label\}', '') + "?name=$([System.Uri]::EscapeDataString((Split-Path $assetPath -Leaf)))"
+        $assetFileName = Split-Path $assetPath -Leaf
+        $existingAsset = $release.assets | Where-Object { $_.name -eq $assetFileName } | Select-Object -First 1
+        if ($existingAsset) {
+            Invoke-RestMethod `
+                -Method Delete `
+                -Headers $headers `
+                -Uri "https://api.github.com/repos/$Repo/releases/assets/$($existingAsset.id)"
+            Write-Output "Deleted existing asset=$assetFileName"
+        }
+
+        $uploadUrl = ($release.upload_url -replace '\{\?name,label\}', '') + "?name=$([System.Uri]::EscapeDataString($assetFileName))"
         Invoke-RestMethod `
             -Method Post `
             -Headers @{
@@ -228,9 +263,10 @@ try {
             $stashRef = ($stashLine.ToString().Split(':', 2)[0]).Trim()
             & git stash pop $stashRef
             if ($LASTEXITCODE -ne 0) {
-                throw "git stash pop failed. Please resolve conflicts and run: git stash list"
+                Write-Warning "git stash pop failed. Please resolve manually and run: git stash list"
+            } else {
+                Write-Output "Auto stash restored."
             }
-            Write-Output "Auto stash restored."
         } else {
             Write-Output "Auto stash entry not found. It may have been restored already."
         }
