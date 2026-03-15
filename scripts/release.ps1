@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [Parameter(Mandatory = $true)]
     [string]$VersionName,
@@ -9,6 +7,8 @@ param(
     [switch]$SkipPush,
     [string]$Branch = "main"
 )
+
+$ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot\use-e-drive-android-env.ps1"
 
