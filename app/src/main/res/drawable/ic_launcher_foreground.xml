@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@color/launcher_card"
+        android:pathData="M20,22m8,0h52a8,8 0,0 1,8 8v48a8,8 0,0 1,-8 8h-52a8,8 0,0 1,-8 -8v-48a8,8 0,0 1,8 -8z" />
+    <path
+        android:fillColor="@color/launcher_photo"
+        android:pathData="M29,34h40a6,6 0,0 1,6 6v24a6,6 0,0 1,-6 6h-40a6,6 0,0 1,-6 -6v-24a6,6 0,0 1,6 -6z" />
+    <path
+        android:fillColor="@color/launcher_card"
+        android:pathData="M32,60l10,-11 8,8 8,-10 14,17z" />
+    <path
+        android:fillColor="@color/launcher_card"
+        android:pathData="M60,43m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+    <path
+        android:fillColor="@color/launcher_accent"
+        android:pathData="M58,63h22a4,4 0,0 1,4 4v11a4,4 0,0 1,-4 4h-22a4,4 0,0 1,-4 -4v-11a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="@color/launcher_ink"
+        android:pathData="M64,68h10a2,2 0,0 1,0 4h-10a2,2 0,0 1,0 -4z" />
+    <path
+        android:fillColor="@color/launcher_ink"
+        android:pathData="M64,74h14a2,2 0,0 1,0 4h-14a2,2 0,0 1,0 -4z" />
+</vector>
