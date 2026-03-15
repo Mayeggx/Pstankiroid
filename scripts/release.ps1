@@ -2,13 +2,16 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$VersionName,
     [int]$VersionCode,
+    [string]$AppName = "Pstankidroid",
     [string]$BuildTask = "assembleDebug",
     [switch]$SkipBuild,
     [switch]$SkipPush,
     [string]$Branch = "main",
     [switch]$CreateRelease,
     [string]$Repo = "Mayeggx/Pstankiroid",
-    [string]$ReleaseAssetPath
+    [string]$ReleaseAssetPath,
+    [string]$ReleaseTitle,
+    [string]$ReleaseNotes
 )
 
 $ErrorActionPreference = "Stop"
@@ -59,10 +62,26 @@ function Read-VersionInfo {
 
 function Get-ArtifactName {
     param(
+        [string]$Name,
         [string]$Version
     )
 
-    return "Pstankidroid-v$Version.apk"
+    return "$Name-v$Version.apk"
+}
+
+function Get-DefaultReleaseNotes {
+    param(
+        [string]$Name,
+        [string]$Version,
+        [string]$AssetFileName
+    )
+
+    return @"
+$Name $Version
+
+Assets:
+- $AssetFileName
+"@
 }
 
 Push-Location $projectRoot
@@ -111,7 +130,7 @@ try {
         Write-Output "APK=$apkPath"
     }
 
-    $artifactName = Get-ArtifactName -Version $VersionName
+    $artifactName = Get-ArtifactName -Name $AppName -Version $VersionName
     New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
     $releaseAsset = Join-Path $releaseDir $artifactName
     Copy-Item -Force $apkPath $releaseAsset
@@ -145,13 +164,22 @@ try {
             throw "Release asset not found: $assetPath"
         }
 
+        $assetFileName = Split-Path $assetPath -Leaf
+        $finalReleaseTitle = if ($ReleaseTitle) { $ReleaseTitle } else { "v$VersionName" }
+        $finalReleaseNotes =
+            if ($ReleaseNotes) {
+                $ReleaseNotes
+            } else {
+                Get-DefaultReleaseNotes -Name $AppName -Version $VersionName -AssetFileName $assetFileName
+            }
+
         $headers = Get-GitHubHeaders
         $releaseBody =
             @{
                 tag_name = $tagName
                 target_commitish = $Branch
-                name = $tagName
-                body = "Pstankidroid $VersionName`n`nAssets:`n- $(Split-Path $assetPath -Leaf)"
+                name = $finalReleaseTitle
+                body = $finalReleaseNotes
                 draft = $false
                 prerelease = $false
             } | ConvertTo-Json
