@@ -12,6 +12,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -204,7 +207,7 @@ class MainActivity : ComponentActivity() {
         files.forEach { file ->
             if (file.delete()) deletedCount += 1
         }
-        return "已清空列表，并删除当前文件夹下 $deletedCount 张图片。"
+        return "已清空列表，并删除当前文件夹中 $deletedCount 张图片。"
     }
 
     private fun isImageByName(name: String?): Boolean {
@@ -369,8 +372,7 @@ private fun ToolPanel(
         }
     }
 }
-
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun DraftRow(
     draft: DraftCard,
@@ -383,12 +385,12 @@ private fun DraftRow(
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Checkbox(checked = draft.selected, onCheckedChange = onSelectedChange)
@@ -396,7 +398,7 @@ private fun DraftRow(
                     uri = draft.image.uri,
                     modifier =
                         Modifier
-                            .size(96.dp)
+                            .size(84.dp)
                             .clip(RoundedCornerShape(12.dp)),
                     onClick = onPreviewClick,
                 )
@@ -404,14 +406,20 @@ private fun DraftRow(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(
-                        text = draft.image.displayName,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = draft.image.displayName,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Text("字幕: ${draft.image.subtitle}", style = MaterialTheme.typography.bodySmall)
-                    Text("状态: ${draft.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "状态: ${draft.status}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
@@ -422,6 +430,7 @@ private fun DraftRow(
                 placeholder = { Text("输入要制卡的词") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                shape = RoundedCornerShape(10.dp),
             )
 
             FlowRow(
@@ -431,11 +440,19 @@ private fun DraftRow(
                 Button(
                     onClick = onCreateClick,
                     enabled = draft.targetWord.isNotBlank() && !loading,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text("创建卡片")
                 }
-                OutlinedButton(onClick = onPreviewClick) { Text("查看图片") }
-                OutlinedButton(onClick = onRemoveClick, enabled = !loading) { Text("移除") }
+                OutlinedButton(
+                    onClick = onPreviewClick,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                ) { Text("查看图片") }
+                OutlinedButton(
+                    onClick = onRemoveClick,
+                    enabled = !loading,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                ) { Text("移除") }
             }
         }
     }
@@ -586,7 +603,7 @@ private fun StatusDialog(
         },
     )
 }
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LogDialog(
     logs: List<AppLogger.LogEntry>,
@@ -594,33 +611,99 @@ private fun LogDialog(
     onClear: () -> Unit,
 ) {
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val requestGroups = remember(logs) { buildLogGroups(logs) }
+    var selectedGroup by remember(logs) { mutableStateOf<LogRequestGroup?>(null) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-        dismissButton = { TextButton(onClick = onClear, enabled = logs.isNotEmpty()) { Text("清空") } },
-        title = { Text("LLM 日志") },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (selectedGroup == null) {
+                        onDismiss()
+                    } else {
+                        selectedGroup = null
+                    }
+                },
+            ) {
+                Text(if (selectedGroup == null) "关闭" else "返回")
+            }
+        },
+        dismissButton = {
+            if (selectedGroup == null) {
+                TextButton(onClick = onClear, enabled = logs.isNotEmpty()) { Text("清空") }
+            }
+        },
+        title = { Text(if (selectedGroup == null) "LLM 日志" else "请求详情") },
         text = {
-            if (logs.isEmpty()) {
-                Text("还没有 LLM 调用日志")
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(logs.reversed(), key = { "${it.timestamp}-${it.level}-${it.scope}-${it.message.hashCode()}" }) { entry ->
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                text = "${timeFormat.format(Date(entry.timestamp))} [${entry.level}] ${entry.scope}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(entry.message, style = MaterialTheme.typography.bodySmall)
+            when {
+                selectedGroup != null -> {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(selectedGroup!!.entries, key = { "${it.timestamp}-${it.level}-${it.message.hashCode()}" }) { entry ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    text = "${timeFormat.format(Date(entry.timestamp))} [${entry.level}] ${entry.scope}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(entry.message, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+                requestGroups.isEmpty() -> {
+                    Text("还没有 LLM 调用日志")
+                }
+                else -> {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(requestGroups, key = { it.id }) { group ->
+                            Card(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = { selectedGroup = group },
+                                            onLongClick = { selectedGroup = group },
+                                        ),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Text(
+                                        text = "${timeFormat.format(Date(group.timestamp))} [${group.level}]",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = group.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = "共 ${group.entries.size} 条记录",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         },
     )
+}
+
+private enum class SettingsSectionId {
+    LLM,
+    ANKI,
+    IMAGE,
 }
 
 @Composable
@@ -630,34 +713,121 @@ private fun SettingsDialog(
     onSave: (AppConfig) -> Unit,
 ) {
     var config by remember { mutableStateOf(initial) }
+    var selectedSection by remember { mutableStateOf<SettingsSectionId?>(null) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onSave(config) }) { Text("保存") } },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (selectedSection == null) {
+                        onSave(config)
+                    } else {
+                        selectedSection = null
+                    }
+                },
+            ) {
+                Text(if (selectedSection == null) "保存" else "返回")
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-        title = { Text("设置") },
+        title = { Text(if (selectedSection == null) "设置" else settingsSectionTitle(selectedSection!!)) },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { ConfigField("API Key", config.apiKey) { config = config.copy(apiKey = it) } }
-                item { ConfigField("Base URL", config.baseUrl) { config = config.copy(baseUrl = it) } }
-                item { ConfigField("模型名", config.modelName) { config = config.copy(modelName = it) } }
-                item { ConfigField("Prompt 模式(auto/jp/en)", config.promptMode) { config = config.copy(promptMode = it) } }
-                item { ConfigField("日语牌组", config.jpDeck) { config = config.copy(jpDeck = it) } }
-                item { ConfigField("英语牌组", config.enDeck) { config = config.copy(enDeck = it) } }
-                item { ConfigField("Anki 模板", config.ankiModelName) { config = config.copy(ankiModelName = it) } }
-                item { ConfigField("单词字段", config.wordField) { config = config.copy(wordField = it) } }
-                item { ConfigField("音标字段", config.pronunciationField) { config = config.copy(pronunciationField = it) } }
-                item { ConfigField("释义字段", config.meaningField) { config = config.copy(meaningField = it) } }
-                item { ConfigField("笔记字段", config.noteField) { config = config.copy(noteField = it) } }
-                item { ConfigField("例句字段", config.exampleField) { config = config.copy(exampleField = it) } }
-                item { ConfigField("发音字段", config.voiceField) { config = config.copy(voiceField = it) } }
-                item { ConfigField("最大宽度", config.maxWidth.toString()) { config = config.copy(maxWidth = it.toIntOrNull() ?: config.maxWidth) } }
-                item { ConfigField("最大高度", config.maxHeight.toString()) { config = config.copy(maxHeight = it.toIntOrNull() ?: config.maxHeight) } }
-                item { ConfigField("图片质量", config.imageQuality.toString()) { config = config.copy(imageQuality = it.toIntOrNull() ?: config.imageQuality) } }
+            when (selectedSection) {
+                null -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SettingsSectionCard(
+                            title = "LLM 设置",
+                            summary = "API Key、Base URL、模型和 Prompt 模式",
+                            onClick = { selectedSection = SettingsSectionId.LLM },
+                        )
+                        SettingsSectionCard(
+                            title = "Anki 设置",
+                            summary = "牌组、模板和字段配置",
+                            onClick = { selectedSection = SettingsSectionId.ANKI },
+                        )
+                        SettingsSectionCard(
+                            title = "图片设置",
+                            summary = "压缩宽度、高度和图片质量",
+                            onClick = { selectedSection = SettingsSectionId.IMAGE },
+                        )
+                    }
+                }
+                SettingsSectionId.LLM -> {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item { ConfigField("API Key", config.apiKey) { config = config.copy(apiKey = it) } }
+                        item { ConfigField("Base URL", config.baseUrl) { config = config.copy(baseUrl = it) } }
+                        item { ConfigField("模型名", config.modelName) { config = config.copy(modelName = it) } }
+                        item { ConfigField("Prompt 模式(auto/jp/en)", config.promptMode) { config = config.copy(promptMode = it) } }
+                    }
+                }
+                SettingsSectionId.ANKI -> {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item { ConfigField("日语牌组", config.jpDeck) { config = config.copy(jpDeck = it) } }
+                        item { ConfigField("英语牌组", config.enDeck) { config = config.copy(enDeck = it) } }
+                        item { ConfigField("Anki 模板", config.ankiModelName) { config = config.copy(ankiModelName = it) } }
+                        item { ConfigField("单词字段", config.wordField) { config = config.copy(wordField = it) } }
+                        item { ConfigField("音标字段", config.pronunciationField) { config = config.copy(pronunciationField = it) } }
+                        item { ConfigField("释义字段", config.meaningField) { config = config.copy(meaningField = it) } }
+                        item { ConfigField("笔记字段", config.noteField) { config = config.copy(noteField = it) } }
+                        item { ConfigField("例句字段", config.exampleField) { config = config.copy(exampleField = it) } }
+                        item { ConfigField("发音字段", config.voiceField) { config = config.copy(voiceField = it) } }
+                    }
+                }
+                SettingsSectionId.IMAGE -> {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item {
+                            ConfigField("最大宽度", config.maxWidth.toString()) {
+                                config = config.copy(maxWidth = it.toIntOrNull() ?: config.maxWidth)
+                            }
+                        }
+                        item {
+                            ConfigField("最大高度", config.maxHeight.toString()) {
+                                config = config.copy(maxHeight = it.toIntOrNull() ?: config.maxHeight)
+                            }
+                        }
+                        item {
+                            ConfigField("图片质量", config.imageQuality.toString()) {
+                                config = config.copy(imageQuality = it.toIntOrNull() ?: config.imageQuality)
+                            }
+                        }
+                    }
+                }
             }
         },
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SettingsSectionCard(
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private fun settingsSectionTitle(section: SettingsSectionId): String =
+    when (section) {
+        SettingsSectionId.LLM -> "LLM 设置"
+        SettingsSectionId.ANKI -> "Anki 设置"
+        SettingsSectionId.IMAGE -> "图片设置"
+    }
 @Composable
 private fun ConfigField(
     label: String,
@@ -670,6 +840,62 @@ private fun ConfigField(
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+private data class LogRequestGroup(
+    val id: String,
+    val timestamp: Long,
+    val level: String,
+    val title: String,
+    val entries: List<AppLogger.LogEntry>,
+)
+
+private fun buildLogGroups(logs: List<AppLogger.LogEntry>): List<LogRequestGroup> {
+    val llmLogs = logs.filter { it.scope == "LLM" }
+    if (llmLogs.isEmpty()) return emptyList()
+
+    val groups = mutableListOf<MutableList<AppLogger.LogEntry>>()
+    var current = mutableListOf<AppLogger.LogEntry>()
+
+    llmLogs.forEach { entry ->
+        val isRequest = entry.message.startsWith("Request")
+        if (isRequest && current.isNotEmpty()) {
+            groups += current
+            current = mutableListOf()
+        }
+        current += entry
+
+        val isFinished =
+            entry.message.startsWith("Response") ||
+                entry.message.startsWith("HTTP ") ||
+                entry.message.startsWith("Request failed")
+        if (isFinished) {
+            groups += current
+            current = mutableListOf()
+        }
+    }
+    if (current.isNotEmpty()) groups += current
+
+    return groups.reversed().mapIndexed { index, entries ->
+        val title =
+            entries.firstOrNull { it.message.startsWith("Request") }
+                ?.message
+                ?.lineSequence()
+                ?.firstOrNull { it.startsWith("endpoint=") || it.startsWith("body=") }
+                ?.removePrefix("endpoint=")
+                ?.removePrefix("body=")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: entries.first().message.lineSequence().firstOrNull().orEmpty()
+
+        LogRequestGroup(
+            id = "${entries.first().timestamp}-$index",
+            timestamp = entries.first().timestamp,
+            level = entries.last().level,
+            title = title,
+            entries = entries,
+        )
+    }
 }
 
 private fun Boolean?.toStatusText(): String =
