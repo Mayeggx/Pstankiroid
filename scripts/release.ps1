@@ -23,6 +23,8 @@ $gradleFile = Join-Path $projectRoot "app\build.gradle.kts"
 $apkPath = Join-Path $projectRoot "app\build\outputs\apk\debug\app-debug.apk"
 $releaseDir = Join-Path $projectRoot "release"
 $tagName = "v$VersionName"
+$autoStashName = "release.ps1-auto-stash-$([DateTimeOffset]::Now.ToUnixTimeSeconds())"
+$didAutoStash = $false
 
 function Get-GitHubHeaders {
     $cred = @"
@@ -88,7 +90,16 @@ Push-Location $projectRoot
 try {
     $statusBefore = (& git status --short)
     if ($statusBefore) {
-        throw "Git worktree is not clean. Commit or stash existing changes before running release.ps1."
+        Write-Output "Detected local changes. Auto stashing before release..."
+        & git stash push -u -m $autoStashName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git stash push failed." }
+        $didAutoStash = $true
+        Write-Output "AutoStash=$autoStashName"
+    }
+
+    $statusAfterStash = (& git status --short)
+    if ($statusAfterStash) {
+        throw "Git worktree is not clean after auto stash. Resolve manually and rerun."
     }
 
     $gitUserName = (& git config user.name).Trim()
@@ -210,5 +221,19 @@ try {
         Write-Output "Note: GitHub will still auto-generate source archives (zip/tar.gz); those cannot be removed."
     }
 } finally {
+    if ($didAutoStash) {
+        Write-Output "Restoring auto stashed changes..."
+        $stashLine = (& git stash list | Select-String -SimpleMatch $autoStashName | Select-Object -First 1)
+        if ($stashLine) {
+            $stashRef = ($stashLine.ToString().Split(':', 2)[0]).Trim()
+            & git stash pop $stashRef
+            if ($LASTEXITCODE -ne 0) {
+                throw "git stash pop failed. Please resolve conflicts and run: git stash list"
+            }
+            Write-Output "Auto stash restored."
+        } else {
+            Write-Output "Auto stash entry not found. It may have been restored already."
+        }
+    }
     Pop-Location
 }

@@ -134,18 +134,24 @@ class AnkiDroidClient(
         val deckName = if (mode == "jp") config.jpDeck else config.enDeck
         val deckId = ensureDeck(deckName)
         val model = requireModel(config.ankiModelName)
+        AppLogger.i(
+            "Anki",
+            "Prepare note\nmode=$mode\ndeck=$deckName\ndeckId=$deckId\nmodel=${model.name}\nmodelId=${model.id}\nword=${payload.word}",
+        )
         val imageTag = importImage(config, input.image)
+        val exampleHtml = makeExampleHtml(payload.example, imageTag)
         val values =
             mapOf(
                 config.wordField to payload.word,
                 config.pronunciationField to payload.pronunciation,
                 config.meaningField to payload.meaning,
                 config.noteField to payload.note,
-                config.exampleField to "${payload.example}<br>$imageTag",
+                config.exampleField to exampleHtml,
                 config.voiceField to makeVoiceTag(mode, payload.word, payload.pronunciation),
             )
         val existing = findExisting(model, deckName, config.wordField, payload.word)
         return if (existing != null) {
+            AppLogger.i("Anki", "Update existing note\nnoteId=${existing.id}\ndeck=$deckName\ndeckId=$deckId\nword=${payload.word}")
             val merged =
                 existing.fields.toMutableMap().apply {
                     put(config.wordField, payload.word)
@@ -153,7 +159,7 @@ class AnkiDroidClient(
                     put(config.voiceField, makeVoiceTag(mode, payload.word, payload.pronunciation))
                     put(config.meaningField, appendHtml(get(config.meaningField).orEmpty(), payload.meaning))
                     put(config.noteField, appendHtml(get(config.noteField).orEmpty(), payload.note))
-                    put(config.exampleField, appendHtml(get(config.exampleField).orEmpty(), "${payload.example}<br>$imageTag"))
+                    put(config.exampleField, appendHtml(get(config.exampleField).orEmpty(), exampleHtml))
                 }
             updateNote(existing.id, model.fields.map { merged[it].orEmpty() })
             "Updated ${input.image.displayName} -> ${payload.word}"
@@ -170,6 +176,16 @@ class AnkiDroidClient(
         if (current.isBlank()) return next
         if (current.contains(next)) return current
         return "$current<br>$next"
+    }
+
+    private fun makeExampleHtml(
+        example: String,
+        imageTag: String,
+    ): String {
+        val normalizedExample = example.trim()
+        val prefixedExample =
+            if (normalizedExample.startsWith("●")) normalizedExample else "● $normalizedExample"
+        return "$prefixedExample<br>$imageTag"
     }
 
     private fun explainBatch(
@@ -357,7 +373,9 @@ class AnkiDroidClient(
         )?.use { cursor ->
             while (cursor.moveToNext()) {
                 if (cursor.getString(cursor.getColumnIndexOrThrow("deck_name")) == name) {
-                    return cursor.getLong(cursor.getColumnIndexOrThrow("deck_id"))
+                    val deckId = cursor.getLong(cursor.getColumnIndexOrThrow("deck_id"))
+                    AppLogger.i("Anki", "Use existing deck\nname=$name\ndeckId=$deckId")
+                    return deckId
                 }
             }
         }
@@ -366,7 +384,9 @@ class AnkiDroidClient(
                 Uri.parse("content://$authority/decks"),
                 ContentValues().apply { put("deck_name", name) },
             )
-        return inserted?.lastPathSegment?.toLong() ?: error("Failed to create deck: $name")
+        val createdDeckId = inserted?.lastPathSegment?.toLong() ?: error("Failed to create deck: $name")
+        AppLogger.i("Anki", "Create new deck\nname=$name\ndeckId=$createdDeckId")
+        return createdDeckId
     }
 
     private fun findExisting(
@@ -383,10 +403,8 @@ class AnkiDroidClient(
         val escapedModel = escapeQueryValue(model.name)
         val queries =
             listOf(
-                "\"$wordField:$escapedWord\"",
-                "deck:\"$escapedDeck\" \"$wordField:$escapedWord\"",
                 "deck:\"$escapedDeck\" note:\"$escapedModel\" \"$wordField:$escapedWord\"",
-                "deck:\"$escapedDeck\"",
+                "deck:\"$escapedDeck\" \"$wordField:$escapedWord\"",
             )
 
         val seenIds = mutableSetOf<Long>()
@@ -446,6 +464,7 @@ class AnkiDroidClient(
                 null,
                 null,
             )
+        AppLogger.i("Anki", "Update note result\nnoteId=$noteId\nupdated=$updated")
         require(updated > 0) { "Failed to update note." }
     }
 
@@ -454,16 +473,17 @@ class AnkiDroidClient(
         deckId: Long,
         fields: List<String>,
     ) {
-        val inserted =
-            context.contentResolver.insert(
-                Uri.parse("content://$authority/notes?deckId=$deckId"),
-                ContentValues().apply {
-                    put("mid", modelId)
-                    put("flds", fields.joinToString(fieldSeparator))
-                    put("tags", "pstankidroid pic-sub")
-                },
-            )
-        require(inserted != null) { "Failed to insert note." }
+        val insertUri = Uri.parse("content://$authority/notes?deckId=$deckId")
+        val values =
+            ContentValues().apply {
+                put("mid", modelId)
+                put("flds", fields.joinToString(fieldSeparator))
+                put("tags", "pstankidroid pic-sub")
+            }
+        AppLogger.i("Anki", "Bulk insert note\nuri=$insertUri\nmodelId=$modelId\ndeckId=$deckId\nfieldsCount=${fields.size}")
+        val insertedCount = context.contentResolver.bulkInsert(insertUri, arrayOf(values))
+        AppLogger.i("Anki", "Bulk insert result\ncount=$insertedCount")
+        require(insertedCount > 0) { "Failed to insert note via bulkInsert." }
     }
 
     private fun importImage(

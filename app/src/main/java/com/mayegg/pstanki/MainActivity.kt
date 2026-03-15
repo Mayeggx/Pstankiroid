@@ -140,7 +140,6 @@ class MainActivity : ComponentActivity() {
                     onWordChange = viewModel::updateTargetWord,
                     onSelectChange = viewModel::updateSelected,
                     onProcessSingle = viewModel::processSingle,
-                    onRemoveDraft = viewModel::removeDraft,
                     onPreviewImage = { previewUri = it },
                 )
 
@@ -167,7 +166,7 @@ class MainActivity : ComponentActivity() {
 
                 if (showLogs) {
                     LogDialog(
-                        logs = logs.filter { it.scope == "LLM" },
+                        logs = logs,
                         onDismiss = { showLogs = false },
                         onClear = AppLogger::clear,
                     )
@@ -247,7 +246,6 @@ private fun MainScreen(
     onWordChange: (String, String) -> Unit,
     onSelectChange: (String, Boolean) -> Unit,
     onProcessSingle: (String) -> Unit,
-    onRemoveDraft: (String) -> Unit,
     onPreviewImage: (Uri) -> Unit,
 ) {
     Scaffold(
@@ -307,7 +305,6 @@ private fun MainScreen(
                     onWordChange = { onWordChange(draft.id, it) },
                     onSelectedChange = { onSelectChange(draft.id, it) },
                     onCreateClick = { onProcessSingle(draft.id) },
-                    onRemoveClick = { onRemoveDraft(draft.id) },
                     onPreviewClick = { onPreviewImage(draft.image.uri) },
                 )
             }
@@ -440,7 +437,6 @@ private fun DraftRow(
     onWordChange: (String) -> Unit,
     onSelectedChange: (Boolean) -> Unit,
     onCreateClick: () -> Unit,
-    onRemoveClick: () -> Unit,
     onPreviewClick: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -483,36 +479,27 @@ private fun DraftRow(
                 }
             }
 
-            OutlinedTextField(
-                value = draft.targetWord,
-                onValueChange = onWordChange,
-                label = { Text("目标词") },
-                placeholder = { Text("输入要制卡的词") },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(10.dp),
-            )
-
-            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                OutlinedTextField(
+                    value = draft.targetWord,
+                    onValueChange = onWordChange,
+                    label = { Text("目标词") },
+                    placeholder = { Text("输入要制卡的词") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                )
                 Button(
                     onClick = onCreateClick,
                     enabled = draft.targetWord.isNotBlank() && !loading,
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
-                    Text("创建卡片")
+                    Text("制卡")
                 }
-                OutlinedButton(
-                    onClick = onPreviewClick,
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                ) { Text("查看图片") }
-                OutlinedButton(
-                    onClick = onRemoveClick,
-                    enabled = !loading,
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                ) { Text("移除") }
             }
         }
     }
@@ -671,7 +658,11 @@ private fun LogDialog(
     onClear: () -> Unit,
 ) {
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
-    val requestGroups = remember(logs) { buildLogGroups(logs) }
+    val llmLogs = remember(logs) { logs.filter { it.scope == "LLM" } }
+    val ankiLogs = remember(logs) { logs.filter { it.scope == "Anki" } }
+    val llmGroups = remember(llmLogs) { buildLlmLogGroups(llmLogs) }
+    val ankiGroups = remember(ankiLogs) { buildAnkiLogGroups(ankiLogs) }
+    val otherLogs = remember(logs) { logs.filter { it.scope != "LLM" && it.scope != "Anki" }.reversed() }
     var selectedGroup by remember(logs) { mutableStateOf<LogRequestGroup?>(null) }
     val currentGroup = selectedGroup
     val closeCurrentLayer = {
@@ -705,7 +696,7 @@ private fun LogDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(
-                    text = if (currentGroup == null) "LLM 日志" else "请求详情",
+                    text = if (currentGroup == null) "应用日志" else "请求详情",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -733,12 +724,21 @@ private fun LogDialog(
                                 }
                             }
                         }
-                        requestGroups.isEmpty() -> {
-                            Text("还没有 LLM 调用日志")
+                        llmGroups.isEmpty() && ankiGroups.isEmpty() && otherLogs.isEmpty() -> {
+                            Text("还没有日志")
                         }
                         else -> {
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(requestGroups, key = { it.id }) { group ->
+                                if (llmGroups.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            text = "LLM 请求",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                items(llmGroups, key = { it.id }) { group ->
                                     Card(
                                         modifier =
                                             Modifier
@@ -768,6 +768,81 @@ private fun LogDialog(
                                                 text = "共 ${group.entries.size} 条记录",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                                if (ankiGroups.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            text = "Anki 请求",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                items(ankiGroups, key = { it.id }) { group ->
+                                    Card(
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .combinedClickable(
+                                                    onClick = { selectedGroup = group },
+                                                    onLongClick = { selectedGroup = group },
+                                                ),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Text(
+                                                text = "${timeFormat.format(Date(group.timestamp))} [${group.level}]",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Text(
+                                                text = group.title,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                text = "共 ${group.entries.size} 条记录",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                                if (otherLogs.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            text = "其他日志",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                items(otherLogs, key = { "${it.timestamp}-${it.level}-${it.scope}-${it.message.hashCode()}" }) { entry ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Text(
+                                                text = "${timeFormat.format(Date(entry.timestamp))} [${entry.level}] ${entry.scope}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Text(
+                                                text = entry.message.lineSequence().firstOrNull().orEmpty(),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
                                             )
                                         }
                                     }
@@ -978,34 +1053,16 @@ private data class LogRequestGroup(
     val entries: List<AppLogger.LogEntry>,
 )
 
-private fun buildLogGroups(logs: List<AppLogger.LogEntry>): List<LogRequestGroup> {
-    val llmLogs = logs.filter { it.scope == "LLM" }
-    if (llmLogs.isEmpty()) return emptyList()
-
-    val groups = mutableListOf<MutableList<AppLogger.LogEntry>>()
-    var current = mutableListOf<AppLogger.LogEntry>()
-
-    llmLogs.forEach { entry ->
-        val isRequest = entry.message.startsWith("Request")
-        if (isRequest && current.isNotEmpty()) {
-            groups += current
-            current = mutableListOf()
-        }
-        current += entry
-
-        val isFinished =
-            entry.message.startsWith("Response") ||
-                entry.message.startsWith("HTTP ") ||
-                entry.message.startsWith("Request failed")
-        if (isFinished) {
-            groups += current
-            current = mutableListOf()
-        }
-    }
-    if (current.isNotEmpty()) groups += current
-
-    return groups.reversed().mapIndexed { index, entries ->
-        val title =
+private fun buildLlmLogGroups(logs: List<AppLogger.LogEntry>): List<LogRequestGroup> =
+    buildScopedLogGroups(
+        logs = logs,
+        isStart = { it.message.startsWith("Request") },
+        isEnd = {
+            it.message.startsWith("Response") ||
+                it.message.startsWith("HTTP ") ||
+                it.message.startsWith("Request failed")
+        },
+        titleExtractor = { entries ->
             entries.firstOrNull { it.message.startsWith("Request") }
                 ?.message
                 ?.lineSequence()
@@ -1015,12 +1072,63 @@ private fun buildLogGroups(logs: List<AppLogger.LogEntry>): List<LogRequestGroup
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
                 ?: entries.first().message.lineSequence().firstOrNull().orEmpty()
+        },
+    )
 
+private fun buildAnkiLogGroups(logs: List<AppLogger.LogEntry>): List<LogRequestGroup> =
+    buildScopedLogGroups(
+        logs = logs,
+        isStart = { it.message.startsWith("Prepare note") },
+        isEnd = {
+            it.message.startsWith("Bulk insert result") ||
+                it.message.startsWith("Update note result")
+        },
+        titleExtractor = { entries ->
+            val word =
+                entries.firstNotNullOfOrNull { entry ->
+                    entry.message.lineSequence().firstOrNull { it.startsWith("word=") }?.removePrefix("word=")
+                }.orEmpty()
+            val deck =
+                entries.firstNotNullOfOrNull { entry ->
+                    entry.message.lineSequence().firstOrNull { it.startsWith("deck=") }?.removePrefix("deck=")
+                }.orEmpty()
+            listOf(word, deck).filter { it.isNotBlank() }.joinToString(" · ").ifBlank {
+                entries.first().message.lineSequence().firstOrNull().orEmpty()
+            }
+        },
+    )
+
+private fun buildScopedLogGroups(
+    logs: List<AppLogger.LogEntry>,
+    isStart: (AppLogger.LogEntry) -> Boolean,
+    isEnd: (AppLogger.LogEntry) -> Boolean,
+    titleExtractor: (List<AppLogger.LogEntry>) -> String,
+): List<LogRequestGroup> {
+    if (logs.isEmpty()) return emptyList()
+
+    val groups = mutableListOf<MutableList<AppLogger.LogEntry>>()
+    var current = mutableListOf<AppLogger.LogEntry>()
+
+    logs.forEach { entry ->
+        if (isStart(entry) && current.isNotEmpty()) {
+            groups += current
+            current = mutableListOf()
+        }
+        current += entry
+
+        if (isEnd(entry)) {
+            groups += current
+            current = mutableListOf()
+        }
+    }
+    if (current.isNotEmpty()) groups += current
+
+    return groups.reversed().mapIndexed { index, entries ->
         LogRequestGroup(
             id = "${entries.first().timestamp}-$index",
             timestamp = entries.first().timestamp,
             level = entries.last().level,
-            title = title,
+            title = titleExtractor(entries),
             entries = entries,
         )
     }

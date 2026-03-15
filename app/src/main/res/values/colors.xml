@@ -1,7 +1,7 @@
 <resources>
-    <color name="launcher_background">#F3E7CF</color>
-    <color name="launcher_card">#FFFDF7</color>
-    <color name="launcher_photo">#2F6B5F</color>
-    <color name="launcher_accent">#D97A3A</color>
-    <color name="launcher_ink">#15312B</color>
+    <color name="launcher_background">#FFE2EE</color>
+    <color name="launcher_card">#FFF8FB</color>
+    <color name="launcher_photo">#5D3A56</color>
+    <color name="launcher_accent">#FF78A2</color>
+    <color name="launcher_ink">#2A1B2A</color>
 </resources>

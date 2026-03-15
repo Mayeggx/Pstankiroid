@@ -5,23 +5,32 @@
     android:viewportHeight="108">
     <path
         android:fillColor="@color/launcher_card"
-        android:pathData="M20,22m8,0h52a8,8 0,0 1,8 8v48a8,8 0,0 1,-8 8h-52a8,8 0,0 1,-8 -8v-48a8,8 0,0 1,8 -8z" />
+        android:pathData="M54,20m-30,0a30,30 0,1 1,60 0a30,30 0,1 1,-60 0" />
     <path
         android:fillColor="@color/launcher_photo"
-        android:pathData="M29,34h40a6,6 0,0 1,6 6v24a6,6 0,0 1,-6 6h-40a6,6 0,0 1,-6 -6v-24a6,6 0,0 1,6 -6z" />
-    <path
-        android:fillColor="@color/launcher_card"
-        android:pathData="M32,60l10,-11 8,8 8,-10 14,17z" />
-    <path
-        android:fillColor="@color/launcher_card"
-        android:pathData="M60,43m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+        android:pathData="M28,50c0,-14 12,-26 26,-26s26,12 26,26v16c0,10 -8,18 -18,18h-16c-10,0 -18,-8 -18,-18z" />
     <path
         android:fillColor="@color/launcher_accent"
-        android:pathData="M58,63h22a4,4 0,0 1,4 4v11a4,4 0,0 1,-4 4h-22a4,4 0,0 1,-4 -4v-11a4,4 0,0 1,4 -4z" />
+        android:pathData="M18,44c2,-8 9,-14 17,-14s15,6 17,14l-6,6h-22z" />
+    <path
+        android:fillColor="@color/launcher_accent"
+        android:pathData="M90,44c-2,-8 -9,-14 -17,-14s-15,6 -17,14l6,6h22z" />
+    <path
+        android:fillColor="@color/launcher_card"
+        android:pathData="M54,72m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
     <path
         android:fillColor="@color/launcher_ink"
-        android:pathData="M64,68h10a2,2 0,0 1,0 4h-10a2,2 0,0 1,0 -4z" />
+        android:pathData="M47,69m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
     <path
         android:fillColor="@color/launcher_ink"
-        android:pathData="M64,74h14a2,2 0,0 1,0 4h-14a2,2 0,0 1,0 -4z" />
+        android:pathData="M59,69m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+    <path
+        android:fillColor="@color/launcher_ink"
+        android:pathData="M49,77c3,2 8,2 11,0c1,-1 2,0 1,1c-4,3 -9,3 -13,0c-1,-1 0,-2 1,-1z" />
+    <path
+        android:fillColor="@color/launcher_accent"
+        android:pathData="M23,50c0,-4 3,-7 7,-7s7,3 7,7s-3,7 -7,7s-7,-3 -7,-7z" />
+    <path
+        android:fillColor="@color/launcher_accent"
+        android:pathData="M71,50c0,-4 3,-7 7,-7s7,3 7,7s-3,7 -7,7s-7,-3 -7,-7z" />
 </vector>
