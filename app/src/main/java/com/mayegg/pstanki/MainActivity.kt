@@ -1,20 +1,22 @@
+﻿
 package com.mayegg.pstanki
 
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.ImageView
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -63,15 +66,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mayegg.pstanki.ui.PstankidroidTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,6 +98,7 @@ class MainActivity : ComponentActivity() {
                 var showSettings by remember { mutableStateOf(false) }
                 var showStatus by remember { mutableStateOf(false) }
                 var showLogs by remember { mutableStateOf(false) }
+                var showAbout by remember { mutableStateOf(false) }
                 var previewUri by remember { mutableStateOf<Uri?>(null) }
 
                 val permissionLauncher =
@@ -121,6 +127,7 @@ class MainActivity : ComponentActivity() {
                     onOpenSettings = { showSettings = true },
                     onOpenStatus = { showStatus = true },
                     onOpenLogs = { showLogs = true },
+                    onOpenAbout = { showAbout = true },
                     onPickFolder = { folderLauncher.launch(null) },
                     onPromptModeChange = viewModel::updatePromptMode,
                     onSelectAll = viewModel::selectAll,
@@ -164,6 +171,10 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { showLogs = false },
                         onClear = AppLogger::clear,
                     )
+                }
+
+                if (showAbout) {
+                    AboutDialog(onDismiss = { showAbout = false })
                 }
 
                 previewUri?.let { uri ->
@@ -219,7 +230,6 @@ class MainActivity : ComponentActivity() {
             lower.endsWith(".gif")
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScreen(
@@ -227,6 +237,7 @@ private fun MainScreen(
     onOpenSettings: () -> Unit,
     onOpenStatus: () -> Unit,
     onOpenLogs: () -> Unit,
+    onOpenAbout: () -> Unit,
     onPickFolder: () -> Unit,
     onPromptModeChange: (String) -> Unit,
     onSelectAll: () -> Unit,
@@ -242,15 +253,34 @@ private fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("PicSubToAnki") },
+                title = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StatusChip("已选", "${state.drafts.count { it.selected }} 项")
+                        PromptModeChip(
+                            selectedMode = state.config.promptMode,
+                            onModeSelected = onPromptModeChange,
+                        )
+                    }
+                },
                 actions = {
-                    TextButton(onClick = onOpenStatus) { Text("状态") }
-                    PromptModeDropdown(
-                        selectedMode = state.config.promptMode,
-                        onModeSelected = onPromptModeChange,
+                    ActionsDropdown(
+                        state = state,
+                        onPickFolder = onPickFolder,
+                        onSelectAll = onSelectAll,
+                        onSelectNone = onSelectNone,
+                        onProcessSelected = onProcessSelected,
+                        onClearDrafts = onClearDrafts,
                     )
-                    TextButton(onClick = onOpenLogs) { Text("日志") }
-                    TextButton(onClick = onOpenSettings) { Text("设置") }
+                    MoreDropdown(
+                        onOpenStatus = onOpenStatus,
+                        onOpenLogs = onOpenLogs,
+                        onOpenSettings = onOpenSettings,
+                        onOpenAbout = onOpenAbout,
+                    )
                 },
             )
         },
@@ -263,16 +293,6 @@ private fun MainScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                ToolPanel(
-                    state = state,
-                    onPickFolder = onPickFolder,
-                    onSelectAll = onSelectAll,
-                    onSelectNone = onSelectNone,
-                    onProcessSelected = onProcessSelected,
-                    onClearDrafts = onClearDrafts,
-                )
-            }
             if (state.loading) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -296,17 +316,105 @@ private fun MainScreen(
 }
 
 @Composable
-private fun PromptModeDropdown(
+private fun StatusContent(
+    state: MainUiState,
+    selectedCount: Int,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("运行状态", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("AnkiDroid: ${state.installed.toStatusText()}")
+        Text("Provider: ${state.providerAvailable.toStatusText()}")
+        Text("权限: ${state.permissionGranted.toStatusText()}")
+        Text("当前文件夹: ${state.currentFolderLabel}")
+        Text("当前列表: ${state.drafts.size} 项，已选 $selectedCount 项")
+        Text(state.statusMessage, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun ActionsDropdown(
+    state: MainUiState,
+    onPickFolder: () -> Unit,
+    onSelectAll: () -> Unit,
+    onSelectNone: () -> Unit,
+    onProcessSelected: () -> Unit,
+    onClearDrafts: () -> Unit,
+) {
+    val selectedCount = state.drafts.count { it.selected }
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        TextButton(onClick = { expanded = true }) { Text("操作") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("选择文件夹") }, onClick = { expanded = false; onPickFolder() })
+            DropdownMenuItem(text = { Text("全选") }, enabled = state.drafts.isNotEmpty(), onClick = { expanded = false; onSelectAll() })
+            DropdownMenuItem(text = { Text("取消全选") }, enabled = selectedCount > 0, onClick = { expanded = false; onSelectNone() })
+            DropdownMenuItem(text = { Text("批量制卡") }, enabled = selectedCount > 0 && !state.loading, onClick = { expanded = false; onProcessSelected() })
+            DropdownMenuItem(text = { Text("清空列表") }, enabled = state.drafts.isNotEmpty() && !state.loading, onClick = { expanded = false; onClearDrafts() })
+        }
+    }
+}
+
+@Composable
+private fun MoreDropdown(
+    onOpenStatus: () -> Unit,
+    onOpenLogs: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenAbout: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        TextButton(onClick = { expanded = true }) { Text("更多") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("状态") }, onClick = { expanded = false; onOpenStatus() })
+            DropdownMenuItem(text = { Text("日志") }, onClick = { expanded = false; onOpenLogs() })
+            DropdownMenuItem(text = { Text("设置") }, onClick = { expanded = false; onOpenSettings() })
+            DropdownMenuItem(text = { Text("关于") }, onClick = { expanded = false; onOpenAbout() })
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(
+    label: String,
+    value: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Text(
+            text = "$label: $value",
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun PromptModeChip(
     selectedMode: String,
     onModeSelected: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+
     Box {
-        TextButton(onClick = { expanded = true }) { Text(promptModeLabel(selectedMode)) }
+        Surface(
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(999.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Text(
+                text = "模式: ${promptModeLabel(selectedMode)}",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             listOf("auto", "jp", "en").forEach { mode ->
                 DropdownMenuItem(
-                    text = { Text(promptModeLabel(mode)) },
+                    text = { Text("模式: ${promptModeLabel(mode)}") },
                     onClick = {
                         expanded = false
                         onModeSelected(mode)
@@ -319,59 +427,11 @@ private fun PromptModeDropdown(
 
 private fun promptModeLabel(mode: String): String =
     when (mode) {
-        "jp" -> "日文"
-        "en" -> "英文"
-        else -> "自动"
+        "jp" -> "jp"
+        "en" -> "en"
+        else -> "auto"
     }
 
-@Composable
-private fun StatusContent(
-    state: MainUiState,
-    selectedCount: Int,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("运行状态", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("AnkiDroid: ${state.installed.toStatusText()}")
-        Text("Provider: ${state.providerAvailable.toStatusText()}")
-        Text("权限: ${state.permissionGranted.toStatusText()}")
-        Text("当前文件夹: ${state.currentFolderLabel}")
-        Text("当前列表: ${state.drafts.size} 项，已选择 $selectedCount 项")
-        Text(state.statusMessage, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ToolPanel(
-    state: MainUiState,
-    onPickFolder: () -> Unit,
-    onSelectAll: () -> Unit,
-    onSelectNone: () -> Unit,
-    onProcessSelected: () -> Unit,
-    onClearDrafts: () -> Unit,
-) {
-    val selectedCount = state.drafts.count { it.selected }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = onPickFolder) { Text("选择文件夹") }
-                OutlinedButton(onClick = onSelectAll, enabled = state.drafts.isNotEmpty()) { Text("全选") }
-                OutlinedButton(onClick = onSelectNone, enabled = selectedCount > 0) { Text("取消全选") }
-                Button(onClick = onProcessSelected, enabled = selectedCount > 0 && !state.loading) { Text("批量制卡") }
-                OutlinedButton(onClick = onClearDrafts, enabled = state.drafts.isNotEmpty() && !state.loading) { Text("清空列表") }
-            }
-        }
-    }
-}
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun DraftRow(
@@ -457,7 +517,6 @@ private fun DraftRow(
         }
     }
 }
-
 @Composable
 private fun Thumbnail(
     uri: Uri,
@@ -603,6 +662,7 @@ private fun StatusDialog(
         },
     )
 }
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LogDialog(
@@ -613,93 +673,125 @@ private fun LogDialog(
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     val requestGroups = remember(logs) { buildLogGroups(logs) }
     var selectedGroup by remember(logs) { mutableStateOf<LogRequestGroup?>(null) }
+    val closeCurrentLayer = {
+        if (selectedGroup == null) {
+            onDismiss()
+        } else {
+            selectedGroup = null
+        }
+    }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (selectedGroup == null) {
-                        onDismiss()
-                    } else {
-                        selectedGroup = null
-                    }
-                },
+    BackHandler(onBack = closeCurrentLayer)
+
+    Dialog(
+        onDismissRequest = closeCurrentLayer,
+        properties =
+            DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                usePlatformDefaultWidth = false,
+            ),
+    ) {
+        Card(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(if (selectedGroup == null) "关闭" else "返回")
-            }
-        },
-        dismissButton = {
-            if (selectedGroup == null) {
-                TextButton(onClick = onClear, enabled = logs.isNotEmpty()) { Text("清空") }
-            }
-        },
-        title = { Text(if (selectedGroup == null) "LLM 日志" else "请求详情") },
-        text = {
-            when {
-                selectedGroup != null -> {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(selectedGroup!!.entries, key = { "${it.timestamp}-${it.level}-${it.message.hashCode()}" }) { entry ->
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Text(
-                                    text = "${timeFormat.format(Date(entry.timestamp))} [${entry.level}] ${entry.scope}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(entry.message, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text = if (selectedGroup == null) "LLM 日志" else "请求详情",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(420.dp),
+                ) {
+                    when {
+                        selectedGroup != null -> {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(selectedGroup!!.entries, key = { "${it.timestamp}-${it.level}-${it.message.hashCode()}" }) { entry ->
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Text(
+                                            text = "${timeFormat.format(Date(entry.timestamp))} [${entry.level}] ${entry.scope}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(entry.message, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-                requestGroups.isEmpty() -> {
-                    Text("还没有 LLM 调用日志")
-                }
-                else -> {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(requestGroups, key = { it.id }) { group ->
-                            Card(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .combinedClickable(
-                                            onClick = { selectedGroup = group },
-                                            onLongClick = { selectedGroup = group },
-                                        ),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Text(
-                                        text = "${timeFormat.format(Date(group.timestamp))} [${group.level}]",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = group.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = "共 ${group.entries.size} 条记录",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                        requestGroups.isEmpty() -> {
+                            Text("还没有 LLM 调用日志")
+                        }
+                        else -> {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(requestGroups, key = { it.id }) { group ->
+                                    Card(
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .combinedClickable(
+                                                    onClick = { selectedGroup = group },
+                                                    onLongClick = { selectedGroup = group },
+                                                ),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Text(
+                                                text = "${timeFormat.format(Date(group.timestamp))} [${group.level}]",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Text(
+                                                text = group.title,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                text = "共 ${group.entries.size} 条记录",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    if (selectedGroup == null) {
+                        TextButton(onClick = onClear, enabled = logs.isNotEmpty()) {
+                            Text("清空")
+                        }
+                    }
+                    TextButton(onClick = closeCurrentLayer) {
+                        Text("关闭")
+                    }
+                }
             }
-        },
-    )
+        }
+    }
 }
-
 private enum class SettingsSectionId {
     LLM,
     ANKI,
@@ -822,12 +914,47 @@ private fun SettingsSectionCard(
     }
 }
 
+@Composable
+private fun AboutDialog(
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val packageInfo =
+        remember {
+            try {
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            } catch (_: PackageManager.NameNotFoundException) {
+                null
+            }
+        }
+    val versionName = packageInfo?.versionName ?: "未知"
+    val versionCode =
+        packageInfo?.let {
+            it.longVersionCode.toString()
+        } ?: "未知"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        title = { Text("关于") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Pstankidroid", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("作者: mayegg")
+                Text("版本: $versionName ($versionCode)")
+                Text("用于从图片批量生成词卡内容，并写入 AnkiDroid。", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+    )
+}
+
 private fun settingsSectionTitle(section: SettingsSectionId): String =
     when (section) {
         SettingsSectionId.LLM -> "LLM 设置"
         SettingsSectionId.ANKI -> "Anki 设置"
         SettingsSectionId.IMAGE -> "图片设置"
     }
+
 @Composable
 private fun ConfigField(
     label: String,

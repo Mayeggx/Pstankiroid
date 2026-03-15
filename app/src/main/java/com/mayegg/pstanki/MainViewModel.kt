@@ -80,7 +80,7 @@ class MainViewModel(
                 current[image.uri.toString()] ?: DraftCard(id = image.uri.toString(), image = image)
             }
         val drafts = (_uiState.value.drafts + incoming).distinctBy { it.id }
-        _uiState.update { it.copy(drafts = drafts, statusMessage = "已选择 ${drafts.size} 张图片。") }
+        _uiState.update { it.copy(drafts = drafts, statusMessage = "已载入 ${drafts.size} 张图片。") }
     }
 
     fun updateTargetWord(
@@ -134,7 +134,7 @@ class MainViewModel(
 
     fun processSelected() {
         val selected = _uiState.value.drafts.filter { it.selected }
-        processDrafts(selected, "批量处理完成：${selected.size} 项。")
+        processDrafts(selected, "批量处理完成，共 ${selected.size} 项。")
     }
 
     fun processSingle(id: String) {

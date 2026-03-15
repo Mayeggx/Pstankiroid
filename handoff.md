@@ -21,6 +21,24 @@
 
 ## 本轮已完成
 
+- 修复日志详情关闭逻辑:
+  - `日志 -> 请求详情 -> 关闭` 现在优先返回日志列表层，不再直接走整层退出
+  - `LogDialog` 从 `AlertDialog` 改为自定义 `Dialog`，并显式接管返回键与关闭按钮行为
+- 顶栏重新整理:
+  - 顶部仅保留左侧 `已选` 与 `模式`
+  - `状态 / 日志 / 设置 / 关于` 收拢进 `更多` 下拉菜单
+  - `更多` 与操作项放在右侧，避免和左侧状态信息混排
+- 列表统计文案调整:
+  - 顶栏统计由 `列表` 改为 `已选`
+  - 展示当前已勾选图片数量，而不是草稿总数
+- 主界面与弹窗文案清理:
+  - 修正了 `MainActivity.kt` 与 `MainViewModel.kt` 中一批乱码中文文案
+  - 状态、设置、图片预览、关于等弹窗文案已恢复为正常中文
+- 已完成本地构建与设备拉起验证:
+  - `assembleDebug` 构建通过
+  - 已通过 ADB 检测到在线设备 `SM-T830`
+  - 应用前台 Activity 确认为 `com.mayegg.pstanki/.MainActivity`
+
 - 设置界面改为三级入口结构:
   - `LLM 设置`
   - `Anki 设置`
@@ -44,6 +62,34 @@
 - 已新增并完善自动化发布脚本:
   - [release.ps1](/E:/Mega/Pstankiroid/scripts/release.ps1)
   - [release.bat](/E:/Mega/Pstankiroid/scripts/release.bat)
+- 主界面顶部和操作入口已调整:
+  - 取消顶部左上角 `PicSubToAnki` 标题
+  - 取消顶部独立的模式切换按钮
+  - 新增顶部 `操作` 下拉菜单，包含:
+    - `选择文件夹`
+    - `全选`
+    - `取消全选`
+    - `批量制卡`
+    - `清空列表`
+  - 顶部新增 `关于` 按钮
+  - `关于` 弹窗显示应用信息、版本和作者 `mayegg`
+- 主界面模式入口已调整:
+  - 主界面保留 `模式: auto/jp/en` 的可点击组件
+  - 点击后可直接切换模式
+  - 设置页里的 `Prompt 模式(auto/jp/en)` 输入仍然保留
+- 已多次通过 ADB 重新安装和启动 Debug 包:
+  - 使用过 `adb install -r`
+  - 也验证过先 `adb uninstall com.mayegg.pstanki` 再重新安装
+  - 设备上当前包信息确认存在:
+    - `versionName=1.0.1`
+    - `versionCode=2`
+    - 一次卸载重装后的 `firstInstallTime/lastUpdateTime = 2026-03-15 22:58:45`
+
+## 当前未解决问题
+
+- 顶部状态栏布局仍需再次确认
+  - 本轮已将 `已选/模式` 固定在左侧，其他入口收拢到 `更多`
+  - 仍建议在真机上复测横屏、窄屏和字体放大场景，确认不会挤压
 
 ## 核心文件
 
@@ -74,6 +120,8 @@
 - 单条制卡仍支持逐条执行
 - `清空列表` 不只清空 UI，也会尝试删除当前所选文件夹中的图片文件
 - 主界面文件名现在是 `SelectionContainer` 包裹的文本，可调用系统文本选择菜单
+- `关于` 按钮会弹出应用信息窗口，显示作者 `mayegg`
+- 主界面模式组件可以直接切换 `auto / jp / en`
 
 ## 风险和注意事项
 
@@ -141,19 +189,30 @@ powershell -ExecutionPolicy Bypass -File .\scripts\release.ps1 -VersionName 1.0.
 - APK 已生成: `app\build\outputs\apk\debug\app-debug.apk`
 - 已通过 ADB 安装并拉起应用
 - 前台 Activity 已验证为 `com.mayegg.pstanki/.MainActivity`
+- 也验证过卸载后重新安装，设备包信息可正常读取
 - `v1.0.1` tag 已推送
 - `v1.0.1` GitHub Release 已创建并上传 APK
+- 用户实机反馈:
+  - 当前版本整体“大致没问题”
+  - 但 `日志 -> 日志详情 -> 关闭` 仍会导致整个程序退出
 
 ## 建议优先验证
 
 1. 主界面文件名长按后，是否能稳定弹出 Android 原生文本选择工具并复制
 2. 设置界面三级入口在手机上是否足够清晰，是否需要增加分类说明或图标
 3. 日志分组在成功请求、HTTP 错误和请求异常三种情况下是否都能正确分栏
-4. `清空列表` 是否需要补二次确认，避免误删图片
-5. 是否要把发布流程从 `debug APK` 切换为真正的 `release APK`
+4. `日志 -> 日志详情 -> 关闭` 为什么仍会退出整个程序，需要在真机上重点复现和修复
+5. `清空列表` 是否需要补二次确认，避免误删图片
+6. 是否要把发布流程从 `debug APK` 切换为真正的 `release APK`
 
 ## 参考资料
 
 - [README.md](/E:/Mega/Pstankiroid/README.md)
 - [doc/provider.md](/E:/Mega/Pstankiroid/doc/provider.md)
 - [doc/anki-connect-api.md](/E:/Mega/Pstankiroid/doc/anki-connect-api.md)
+
+## 补充说明
+
+- 本轮开发遇到过 Windows 命令长度限制问题。
+- 直接用超长 `apply_patch` 或一次性 PowerShell 写整文件时，可能触发 `文件名或扩展名太长`。
+- 如果后续还要做大段文本替换，优先使用较小的补丁，或分段写入文件，避免被平台限制阻塞。
