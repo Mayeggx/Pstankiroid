@@ -1,77 +1,73 @@
 # Pstankidroid Handoff
 
-## 当前状态
+## 项目概况
 
-- 路径：`E:\Mega\Pstankiroid`
+- 项目路径：`E:\Mega\Pstankiroid`
+- 应用名称：`Pstankidroid`
 - 包名：`com.mayegg.pstanki`
 - 技术栈：Android + Kotlin + Jetpack Compose
-- 目标：从截图批量制卡，调用 LLM 生成词条内容，并写入 AnkiDroid
+- 目标：从图片批量生成词卡内容，并写入 AnkiDroid
 
-核心文件：
+## 当前能力
+
+- 选择单张图片或整个文件夹中的多张图片
+- 自动扫描图片并生成待处理草稿列表
+- 支持 `auto`、`jp`、`en` 三种 prompt 模式
+- 调用兼容 OpenAI 的 `/chat/completions` 接口生成词条内容
+- 通过 AnkiDroid `ContentProvider` 查询牌组、模型并插入或更新 note
+- 导入图片到 AnkiDroid 媒体库，并写入 note 的 HTML 字段
+- 同词重复处理时优先更新已有 note，而不是直接新增
+- 支持查看状态、日志和应用内配置
+
+## 核心文件
+
 - [MainActivity.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/MainActivity.kt)
 - [MainViewModel.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/MainViewModel.kt)
 - [AnkiDroidClient.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/AnkiDroidClient.kt)
 - [ConfigRepository.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/ConfigRepository.kt)
+- [Theme.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/ui/Theme.kt)
 
-## 近期完成
+## 主要结构
 
-### LLM / Prompt
+- `MainActivity`
+  负责 Compose UI、文件夹/图片选择、图片预览、状态/日志/设置弹窗。
+- `MainViewModel`
+  负责页面状态、草稿列表、批量处理入口、状态刷新和配置保存。
+- `AnkiDroidClient`
+  负责 AnkiDroid provider 访问、LLM 请求、prompt 拼装、图片压缩导入、note 新增/更新。
+- `ConfigRepository`
+  负责将应用配置持久化到 `SharedPreferences`。
+- `AppLogger`
+  负责应用内日志收集和展示。
 
-- prompt 已拆到 assets 文件中读取：
+## 关键行为
+
+- 选择文件夹后会递归扫描图片并填充草稿列表。
+- 批量制卡只处理当前勾选的草稿。
+- 单条制卡仍然支持逐条执行。
+- `清空列表` 不只是清空 UI，还会尝试删除当前已选文件夹中的图片文件。
+
+## 风险和注意事项
+
+- `清空列表` 带真实删除行为，目前没有二次确认弹窗，存在误删风险。
+- LLM 返回依赖 JSON 结构，接口返回不稳定时，批处理会受影响。
+- AnkiDroid 的模型名、字段名、牌组名必须和应用设置一致，否则插入或更新会失败。
+- 当前写入依赖设备上的 AnkiDroid provider authority：`com.ichi2.anki.flashcards`。
+
+## Prompt 与资源
+
+- Prompt 文件位于：
   - [batch_jp.txt](/E:/Mega/Pstankiroid/app/src/main/assets/prompts/batch_jp.txt)
   - [batch_en.txt](/E:/Mega/Pstankiroid/app/src/main/assets/prompts/batch_en.txt)
-- prompt 模式支持：
-  - `auto`
-  - `jp`
-  - `en`
-- `auto` 模式参考 `PicSubToAnki`，按第一张卡片目标词首字符判断
-- 整批只发一次请求，不按语言拆分请求
-- prompt 已补上示例输入 / 示例 JSON 输出
+- `auto` 模式会根据词首字符判断更偏向日语还是英语处理。
 
-### 去重与更新
-
-- 已补强去重逻辑，参考 `PicSubToAnki`
-- 添加单词前会先查重
-- 命中已有 note 时更新，不再直接新增
-- 当前实现位于 [AnkiDroidClient.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/AnkiDroidClient.kt)
-
-### 界面
-
-- 顶部保留：`状态`、prompt 模式下拉、`日志`、`设置`
-- prompt 模式切换已改成顶部下拉，不再是按钮组
-- `刷新状态 / 申请权限 / 查询牌组` 已移到状态弹窗
-- 已取消“全部制卡”
-- `清空列表` 现在不仅清空 UI，还会删除当前文件夹下的图片
-- 状态弹窗会显示当前选择的文件夹
-
-## 当前界面行为
-
-- 选择文件夹后：
-  - 记录当前文件夹 URI 和显示名
-  - 递归扫描图片
-  - 加入草稿列表
-- 批量制卡只处理勾选项
-- 单条制卡仍可逐项执行
-- 清空列表会删除当前文件夹内识别到的图片文件
-
-注意：
-- `清空列表` 现在有真实删除行为，存在误删风险
-- 目前还没有二次确认弹窗
-
-## AnkiDroid 侧
-
-- 使用 `ContentProvider` 方式写入，不是桌面版 `AnkiConnect`
-- 当前 authority 使用：
-  - `com.ichi2.anki.flashcards`
-- 已验证 provider 可用性检测和基础写入链路
-
-## 构建与 ADB
+## 构建与调试
 
 构建命令：
 
 ```powershell
 . .\scripts\use-e-drive-android-env.ps1
-./gradlew.bat assembleDebug --console=plain --no-daemon
+.\gradlew.bat assembleDebug --console=plain --no-daemon
 ```
 
 ADB 调试命令：
@@ -80,26 +76,22 @@ ADB 调试命令：
 powershell -ExecutionPolicy Bypass -File .\scripts\start-adb-debug.ps1 -InstallApk -LaunchApp
 ```
 
-最近状态：
-- 构建通过
-- 设备在线：`SM-T830`
-- 应用已成功安装并启动
-- 前台 Activity 已确认是 `com.mayegg.pstanki/.MainActivity`
+当前已验证：
 
-日志文件：
-- [adb-logcat-latest.txt](/E:/Mega/Pstankiroid/logs/adb-logcat-latest.txt)
+- Debug 构建通过
+- APK 已生成：`app\build\outputs\apk\debug\app-debug.apk`
+- 前台 Activity 为 `com.mayegg.pstanki/.MainActivity`
 
-## 下一步建议
+## 建议优先验证
 
-优先验证这几项：
-
-1. 状态弹窗里的三个按钮是否都可用
-2. 顶部 prompt 模式下拉是否生效
-3. 同一单词重复制卡时是否变成更新而不是新增
-4. `清空列表` 是否真的删除当前文件夹图片，是否需要补二次确认
+1. 应用内状态弹窗中的刷新、授权、查询是否都可用。
+2. Prompt 模式切换后，批处理结果是否符合预期。
+3. 同一单词重复制卡时，是否正确走更新逻辑。
+4. `清空列表` 是否需要补二次确认，避免误删图片。
+5. 设备上的 Anki 模型和字段配置是否与应用设置完全一致。
 
 ## 参考资料
 
-- [doc/anki-connect-api.md](/E:/Mega/Pstankiroid/doc/anki-connect-api.md)
+- [README.md](/E:/Mega/Pstankiroid/README.md)
 - [doc/provider.md](/E:/Mega/Pstankiroid/doc/provider.md)
-- [PicSubToAnki/anki_connect.py](/E:/Mega/PicSubToAnki/anki_connect.py)
+- [doc/anki-connect-api.md](/E:/Mega/Pstankiroid/doc/anki-connect-api.md)
