@@ -1,0 +1,14 @@
+.gradle/
+.kotlin/
+local.properties
+*.iml
+.idea/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+logs/
+*.log
+Thumbs.db
+Desktop.ini
