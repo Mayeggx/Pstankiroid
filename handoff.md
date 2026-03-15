@@ -34,6 +34,16 @@
   - 不再使用自定义“长按直接复制”逻辑
   - 缩略图从 `96.dp` 缩小到 `84.dp`
   - 卡片内边距、输入框和按钮 padding 略微缩小
+- 应用图标已替换为自定义 adaptive icon，风格为“图片 + 卡片”
+- 已完成 `v1.0.1` 发版:
+  - `versionName = "1.0.1"`
+  - `versionCode = 2`
+  - git tag: `v1.0.1`
+  - GitHub Release 已创建
+  - Release 资产已上传 APK
+- 已新增并完善自动化发布脚本:
+  - [release.ps1](/E:/Mega/Pstankiroid/scripts/release.ps1)
+  - [release.bat](/E:/Mega/Pstankiroid/scripts/release.bat)
 
 ## 核心文件
 
@@ -42,6 +52,7 @@
 - [AnkiDroidClient.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/AnkiDroidClient.kt)
 - [ConfigRepository.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/ConfigRepository.kt)
 - [Theme.kt](/E:/Mega/Pstankiroid/app/src/main/java/com/mayegg/pstanki/ui/Theme.kt)
+- [release.ps1](/E:/Mega/Pstankiroid/scripts/release.ps1)
 
 ## 主要结构
 
@@ -76,6 +87,10 @@
   - `HTTP ...`
   - `Request failed ...`
   - 如果后续日志格式变更，需要同步调整分组函数 `buildLogGroups`
+- GitHub Release 页面即使只上传 APK，也仍会自动显示:
+  - `Source code (zip)`
+  - `Source code (tar.gz)`
+  - 这是 GitHub 默认行为，不能通过当前脚本移除
 
 ## Prompt 与资源
 
@@ -99,12 +114,35 @@ ADB 调试命令:
 powershell -ExecutionPolicy Bypass -File .\scripts\start-adb-debug.ps1 -InstallApk -LaunchApp
 ```
 
+自动发布命令:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\release.ps1 -VersionName 1.0.2 -CreateRelease
+```
+
+发布脚本当前行为:
+
+- 自动更新 `app/build.gradle.kts` 中的 `versionName` 与 `versionCode`
+- 默认执行 `assembleDebug`
+- 生成重命名产物:
+  - `release\Pstankidroid-v<version>.apk`
+- 自动 commit / tag / push
+- 可自动创建 GitHub Release 并上传 APK
+- 支持自定义:
+  - `-AppName`
+  - `-ReleaseTitle`
+  - `-ReleaseNotes`
+  - `-Branch`
+  - `-Repo`
+
 当前已验证:
 
 - Debug 构建通过
 - APK 已生成: `app\build\outputs\apk\debug\app-debug.apk`
 - 已通过 ADB 安装并拉起应用
 - 前台 Activity 已验证为 `com.mayegg.pstanki/.MainActivity`
+- `v1.0.1` tag 已推送
+- `v1.0.1` GitHub Release 已创建并上传 APK
 
 ## 建议优先验证
 
@@ -112,7 +150,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-adb-debug.ps1 -InstallA
 2. 设置界面三级入口在手机上是否足够清晰，是否需要增加分类说明或图标
 3. 日志分组在成功请求、HTTP 错误和请求异常三种情况下是否都能正确分栏
 4. `清空列表` 是否需要补二次确认，避免误删图片
-5. 设备上的 Anki 模型和字段配置是否与应用设置完全一致
+5. 是否要把发布流程从 `debug APK` 切换为真正的 `release APK`
 
 ## 参考资料
 
