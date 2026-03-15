@@ -17,21 +17,21 @@
 
 ## 本轮关键改动
 
-- 图标更新为“可爱双马尾少女”风格
+- 列表项布局调整（每张图片一栏保持不变）：
+  - 勾选框移动到“目标词输入框”所在行，并放在输入框左侧
+  - 取消“字幕：xxx”小字展示
+  - “状态”行改为仅展示简化状态词
+- 状态流转标准化为 `wait / proceed / updated / created`
 - 修改文件:
-  - `app/src/main/res/drawable/ic_launcher_foreground.xml`
-  - `app/src/main/res/values/colors.xml`
-- 保持现有 adaptive icon 入口不变:
-  - `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`
-  - `app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml`
+  - `app/src/main/java/com/mayegg/pstanki/MainActivity.kt`
+  - `app/src/main/java/com/mayegg/pstanki/MainViewModel.kt`
 
 ## 最近验证结果
 
 - `scripts/build-debug.ps1` 构建成功
 - APK: `app/build/outputs/apk/debug/app-debug.apk`
-- `scripts/start-adb-debug.ps1 -InstallApk -LaunchApp` 通过
-- 设备: `SM_T830`
-- 前台 Activity: `com.mayegg.pstanki/.MainActivity`
+- `scripts/start-adb-debug.ps1 -InstallApk -LaunchApp` 成功返回（脚本内已启动 adb daemon）
+- 额外说明：当前终端会话中 `adb` 命令不在 PATH，未直接执行 `adb devices`
 
 ## 主要风险
 

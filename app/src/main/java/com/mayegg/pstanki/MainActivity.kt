@@ -449,7 +449,6 @@ private fun DraftRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Top,
             ) {
-                Checkbox(checked = draft.selected, onCheckedChange = onSelectedChange)
                 Thumbnail(
                     uri = draft.image.uri,
                     modifier =
@@ -470,9 +469,8 @@ private fun DraftRow(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text("字幕: ${draft.image.subtitle}", style = MaterialTheme.typography.bodySmall)
                     Text(
-                        "状态: ${draft.status}",
+                        "状态: ${draft.status.lowercase()}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -484,6 +482,7 @@ private fun DraftRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Checkbox(checked = draft.selected, onCheckedChange = onSelectedChange)
                 OutlinedTextField(
                     value = draft.targetWord,
                     onValueChange = onWordChange,

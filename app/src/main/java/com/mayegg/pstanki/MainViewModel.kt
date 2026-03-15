@@ -15,7 +15,7 @@ data class DraftCard(
     val id: String,
     val image: AnkiDroidClient.SelectedImage,
     val targetWord: String = "",
-    val status: String = "待处理",
+    val status: String = "wait",
     val selected: Boolean = false,
 )
 
@@ -146,7 +146,16 @@ class MainViewModel(
         drafts: List<DraftCard>,
         successMessage: String,
     ) {
+        val processingIds = drafts.map { it.id }.toSet()
         val config = _uiState.value.config
+        _uiState.update { state ->
+            state.copy(
+                drafts =
+                    state.drafts.map { draft ->
+                        if (draft.id in processingIds) draft.copy(status = "proceed") else draft
+                    },
+            )
+        }
         runTask {
             client.processBatch(config, drafts.map { AnkiDroidClient.ProcessingInput(it.image, it.targetWord) })
                 .onSuccess { results ->
@@ -155,13 +164,23 @@ class MainViewModel(
                         state.copy(
                             drafts =
                                 state.drafts.map { draft ->
-                                    resultMap[draft.id]?.let { draft.copy(status = it, selected = false) } ?: draft
+                                    resultMap[draft.id]?.let { draft.copy(status = normalizeDraftStatus(it), selected = false) } ?: draft
                                 },
                             statusMessage = successMessage,
                         )
                     }
                 }
                 .onFailure { _uiState.update { state -> state.copy(statusMessage = it.message ?: "处理失败") } }
+        }
+    }
+
+    private fun normalizeDraftStatus(raw: String): String {
+        val text = raw.lowercase()
+        return when {
+            "updated" in text -> "updated"
+            "created" in text -> "created"
+            "proceed" in text -> "proceed"
+            else -> "wait"
         }
     }
 
