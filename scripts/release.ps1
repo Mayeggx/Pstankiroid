@@ -40,6 +40,12 @@ try {
         throw "Git worktree is not clean. Commit or stash existing changes before running release.ps1."
     }
 
+    $gitUserName = (& git config user.name).Trim()
+    $gitUserEmail = (& git config user.email).Trim()
+    if ([string]::IsNullOrWhiteSpace($gitUserName) -or [string]::IsNullOrWhiteSpace($gitUserEmail)) {
+        throw "Git user.name/user.email is not configured for this repository."
+    }
+
     $content = Get-Content $gradleFile -Raw
     $current = Read-VersionInfo -Content $content
 
@@ -79,12 +85,17 @@ try {
     }
 
     & git add $gradleFile
+    if ($LASTEXITCODE -ne 0) { throw "git add failed." }
     & git commit -m "Release $tagName"
+    if ($LASTEXITCODE -ne 0) { throw "git commit failed." }
     & git tag -a $tagName -m "Release $tagName"
+    if ($LASTEXITCODE -ne 0) { throw "git tag failed." }
 
     if (-not $SkipPush) {
         & git push origin $Branch
+        if ($LASTEXITCODE -ne 0) { throw "git push branch failed." }
         & git push origin $tagName
+        if ($LASTEXITCODE -ne 0) { throw "git push tag failed." }
     }
 
     Write-Output "Release prep complete."
